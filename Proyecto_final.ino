@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 
 const char * WIFI_SSID = "Isaac123";
-const char * WIFI_PASS = "12345IJRP";
+const char * WIFI_PASS = "1234IJRP";
 
 const char * MQTT_BROKER = "a30kzystkjltf5-ats.iot.us-east-1.amazonaws.com";
 const int MQTT_BROKER_PORT = 8883;
@@ -111,37 +111,55 @@ void reportEstado(String str){
   serializeJson(outputDocEstadoShadow, outputBufferEstadoShadow);
   mqttClient.publish(UPDATE_TOPIC, outputBufferEstadoShadow);
 }
-//
-StaticJsonDocument<JSON_OBJECT_SIZE(1)> inputDoc;
+
+
+DynamicJsonDocument inputDoc(2048);
 
 void callback(const char * topic, byte * payload, unsigned int lenght) {
   String message;
   for (int i = 0; i < lenght; i++) {
     message += String((char) payload[i]);
   }
-  if (String(topic) == SUBSCRIBE_TOPIC) {
+  if (String(topic) == UPDATE_ACCEPTED_TOPIC) {
     Serial.println("Message from topic " + String(topic) + ":" + message);
     
     DeserializationError err = deserializeJson(inputDoc, payload);
     if (!err) {
-      String action = String(inputDoc["action"].as<const char*>());
+      //String action = inputDoc["estado"].as<String>();
+      String action = inputDoc["state"]["reported"]["estado"].as<String>();
       Serial.println("");
       Serial.print("action: ");
       Serial.print(action);
+      Serial.println("");
+      Serial.println("");
+      Serial.print("aoc: ");
+      Serial.print(analogRead(Tope));
+      Serial.println("");
       if (action == "abrir") {
         digitalWrite(4, HIGH);
+        digitalWrite(5, LOW);
+        delay(1100);
+        digitalWrite(4, LOW);
         digitalWrite(5, LOW);
        } 
       if(action == "cerrar")
        {
         digitalWrite(4, LOW);
-        digitalWrite(5, HIGH); 
+        digitalWrite(5, HIGH);
+        delay(1100);
+        digitalWrite(4, LOW);
+        digitalWrite(5, LOW);
        }
       if(action == "detener")
        {
         digitalWrite(4, LOW);
         digitalWrite(5, LOW); 
        }
+      //Serial.println(action);
+      //setBuiltInLed(action);
+      /*if(!action.isEmpty() && !action.equals(estado)){
+        setBuiltInLed(action);
+      } */   
     }
     
   }
@@ -152,8 +170,8 @@ boolean mqttClientConnect() {
   if (mqttClient.connect(MQTT_CLIENT_ID)) {
     Serial.println(" DONE!");
 
-    mqttClient.subscribe(SUBSCRIBE_TOPIC);
-    Serial.println("Subscribed to " + String(SUBSCRIBE_TOPIC));
+    mqttClient.subscribe(UPDATE_ACCEPTED_TOPIC);
+    Serial.println("Subscribed to " + String(UPDATE_TOPIC));
   } else {
     Serial.println("Can't connect to " + String(MQTT_BROKER));
   }
@@ -161,6 +179,8 @@ boolean mqttClientConnect() {
 }
 
 void setup() {
+  pinMode(4,OUTPUT);
+  pinMode(5,OUTPUT);
   Serial.begin(115200);
   pinMode(Tope, ANALOG);  // Configuración del pin Trigger como salida
   pinMode(SensorLuz, ANALOG);      // Configuración del pin Echo como entrada
@@ -223,7 +243,7 @@ void loop() {
     //Serial.print(luz);
     //Serial.print(" -- ");
     //Serial.print("abierto?: ");
-    if(aoc > 800)
+    if(aoc > 1800)
     {
       est = "abierta";   
     }
@@ -252,7 +272,7 @@ void loop() {
     if(Time == "noche" && est == "abierta"){
       dat = "cerrar";
       }
-    if (now - previousPublishMillis >= 2000) {
+    if (now - previousPublishMillis >= 1000) {
       previousPublishMillis = now;
       publishValueLuz(dat);//rule con los topics
       delay(500);
