@@ -2,17 +2,19 @@ const Alexa = require('ask-sdk-core');
 const AWS = require('aws-sdk');
 const IotData = new AWS.IotData({endpoint: 'a30kzystkjltf5-ats.iot.us-east-1.amazonaws.com'});
 
-
 const AbrirParams = {
-  topic: '$aws/things/cortina/shadow/update',
+  thingName: 'cortina',
   payload: '{"state": {"desired": {"action": "abrir"}}}',
-  qos: 0
 };
 
 const CerrarParams = {
-  topic: '$aws/things/cortina/shadow/update',
+  thingName: 'cortina',
   payload: '{"state": {"desired": {"action": "cerrar"}}}',
-  qos: 0
+};
+
+const DetenerParams = {
+  thingName: 'cortina',
+  payload: '{"state": {"desired": {"action": "detener"}}}',
 };
 
 function getShadowPromise(params) {
@@ -28,40 +30,6 @@ function getShadowPromise(params) {
     });
 }
 
-const ShadowParams = {
-    thingName: 'cortina',
-};
-
-const QueryEstadoIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryIntent';
-    },
-    async handle(handlerInput) {
-        var action = 'unknown';
-        await getShadowPromise(ShadowParams)
-          .then((result) => action = result.state.reported.estado);
-        console.log(action);
-
-        var speakOutput = 'Error';
-        if (action == 'abrir') {
-            speakOutput = 'Abriendo';
-        } else if (action == 'cerrar') {
-            speakOutput = 'Cerrando';
-        } else if (action == 'detener') {
-            speakOutput = 'Deteniendo';
-        }
-        else {
-            speakOutput = 'No se pudo consultar el estado de la cortina Inteligente';
-        }
-
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            .reprompt(speakOutput)
-            .getResponse();
-  }
-};
-
 const LaunchRequestHandler = {
     canHandle(handlerInput) {
         return Alexa.getRequestType(handlerInput.requestEnvelope) === 'LaunchRequest';
@@ -76,6 +44,41 @@ const LaunchRequestHandler = {
     }
 };
 
+
+const ShadowParams = {
+    thingName: 'cortina',
+};
+
+const QueryEstadoIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryStateIntent';
+    },
+    async handle(handlerInput) {
+        var estado = 'unknown';
+        await getShadowPromise(ShadowParams)
+          .then((result) => estado = result.state.reported.estado);
+        console.log(estado);
+
+        var speakOutput = 'Error';
+        if (estado == 'abrir') {
+            speakOutput = 'Abriendo';
+        } else if (estado == 'cerrar') {
+            speakOutput = 'Cerrando';
+        } else if (estado == 'detener') {
+            speakOutput = 'Deteniendo';
+        }
+        else {
+            speakOutput = 'No se pudo consultar el estado de la cortina Inteligente';
+        }
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
 const AbrirIntentHandler = {
     canHandle(handlerInput) {
         return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
@@ -87,7 +90,7 @@ const AbrirIntentHandler = {
             if(err) console.log(err);
         });
         
-        speakOutput = 'Abriendo';
+        speakOutput = 'Abriendo la Cortina';
         return handlerInput.responseBuilder
             .speak(speakOutput)
             .reprompt(speakOutput)
@@ -98,14 +101,32 @@ const AbrirIntentHandler = {
 const CerrarIntentHandler = {
     canHandle(handlerInput) {
         return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'CerrarIntent';
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'CerrarStateIntent';
     },
     handle(handlerInput) {
         var speakOutput = 'Error';
         IotData.publish(CerrarParams, function(err, data){
             if (err) console.log(err);
         });
-        speakOutput = 'Cerrando';
+        speakOutput = 'Cerrando la Cortina';
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const DetenerIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'DetenerIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        IotData.publish(DetenerParams, function(err, data){
+            if (err) console.log(err);
+        });
+        speakOutput = 'Deteniendo la Cortina';
         return handlerInput.responseBuilder
             .speak(speakOutput)
             .reprompt(speakOutput)
@@ -204,7 +225,7 @@ const ErrorHandler = {
         return true;
     },
     handle(handlerInput, error) {
-        const speakOutput = 'Sorry, I had trouble doing what you asked. Please try again.';
+        const speakOutput = 'Perdon, no entendi lo dicho';
         console.log(`~~~~ Error handled: ${JSON.stringify(error)}`);
 
         return handlerInput.responseBuilder
@@ -217,9 +238,10 @@ const ErrorHandler = {
 exports.handler = Alexa.SkillBuilders.custom()
     .addRequestHandlers(
         LaunchRequestHandler,
+        QueryEstadoIntentHandler,
         AbrirIntentHandler,
         CerrarIntentHandler,
-        QueryEstadoIntentHandler,
+        DetenerIntentHandler,
         HelloWorldIntentHandler,
         HelpIntentHandler,
         CancelAndStopIntentHandler,
