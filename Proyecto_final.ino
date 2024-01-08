@@ -2,6 +2,9 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+/*
+const char * WIFI_SSID = "CELIA PENARETA";
+const char * WIFI_PASS = "17012003IRP";*/
 
 const char * WIFI_SSID = "Isaac123";
 const char * WIFI_PASS = "1234IJRP";
@@ -101,79 +104,86 @@ qCiYIC+BV7vc1aL/qMGROQwvTKwaK46dxDId62WMEC+ObecoTC0Hcw==
 WiFiClientSecure wiFiClient;
 PubSubClient mqttClient(wiFiClient);
 //
-StaticJsonDocument<JSON_OBJECT_SIZE(3)> outputDocEstadoShadow;
-char outputBufferEstadoShadow[128];
+
 String estado = "unknown";
+
+int aoc; //variable para medir si aun hay luz para cerrar la cortina
+String est;
+String dat;
+int luz; //variable para guardar datos del sensor de luz
+String estadoTiempo;
+
+StaticJsonDocument<JSON_OBJECT_SIZE(3)> outputDoc;
+char outputBuffer[128];
 
 void reportEstado(String str){
   estado = str;
-  outputDocEstadoShadow["state"]["reported"]["estado"] = estado.c_str();
-  serializeJson(outputDocEstadoShadow, outputBufferEstadoShadow);
-  mqttClient.publish(UPDATE_TOPIC, outputBufferEstadoShadow);
+  outputDoc["state"]["reported"]["estado"] = estado.c_str();
+  serializeJson(outputDoc, outputBuffer);
+  mqttClient.publish(UPDATE_TOPIC, outputBuffer);
 }
 
+void setEstado(String str){
+  estado = str;
+  if (estado == "abrir") {
+    digitalWrite(4, HIGH);
+    digitalWrite(5, LOW);
+    delay(1500);
+    digitalWrite(4, LOW);
+    digitalWrite(5, LOW);
+  } else if (estado == "cerrar") {
+    digitalWrite(4, LOW);
+    digitalWrite(5, HIGH);
+    delay(600);
+    digitalWrite(4, LOW);
+    digitalWrite(5, LOW);
+  } else if (estado == "detener") {
+    digitalWrite(4, LOW);
+    digitalWrite(5, LOW);
+  }
+  reportEstado(estado);
+}
 
-DynamicJsonDocument inputDoc(2048);
+StaticJsonDocument<JSON_OBJECT_SIZE(64)> inputDoc;
 
-void callback(const char * topic, byte * payload, unsigned int lenght) {
+void callback(const char * topic, byte * payload, unsigned int lenght){
   String message;
   for (int i = 0; i < lenght; i++) {
     message += String((char) payload[i]);
   }
-  if (String(topic) == UPDATE_ACCEPTED_TOPIC) {
-    Serial.println("Message from topic " + String(topic) + ":" + message);
-    
+  if(String(topic) == UPDATE_ACCEPTED_TOPIC){
+    Serial.println("Mensaje desde topico " + String(topic) + ":" + message);
+
     DeserializationError err = deserializeJson(inputDoc, payload);
-    if (!err) {
-      //String action = inputDoc["estado"].as<String>();
-      String action = inputDoc["state"]["reported"]["estado"].as<String>();
+
+    if(!err){
+      String tmpEstado = String(inputDoc["state"]["desired"]["estado"].as<const char*>());
+      //if(!tmpEstado.isEmpty() && !tmpEstado.equals(estado)) setEstado(tmpEstado);
+/*
+     // String tmpEstado2 = String(inputDoc["state"]["reported"]["estado"].as<const char*>());
       Serial.println("");
-      Serial.print("action: ");
-      Serial.print(action);
+      Serial.print("Estado: ");
+      Serial.print(estado);
       Serial.println("");
-      Serial.println("");
-      Serial.print("aoc: ");
+      Serial.print("Sensor Valor: ");
       Serial.print(analogRead(Tope));
+      Serial.println(" Ohm");
       Serial.println("");
-      if (action == "abrir") {
-        digitalWrite(4, HIGH);
-        digitalWrite(5, LOW);
-        delay(1100);
-        digitalWrite(4, LOW);
-        digitalWrite(5, LOW);
-       } 
-      if(action == "cerrar")
-       {
-        digitalWrite(4, LOW);
-        digitalWrite(5, HIGH);
-        delay(1100);
-        digitalWrite(4, LOW);
-        digitalWrite(5, LOW);
-       }
-      if(action == "detener")
-       {
-        digitalWrite(4, LOW);
-        digitalWrite(5, LOW); 
-       }
-      //Serial.println(action);
-      //setBuiltInLed(action);
-      /*if(!action.isEmpty() && !action.equals(estado)){
-        setBuiltInLed(action);
-      } */   
-    }
-    
+      Serial.println("");
+      setEstado(tmpEstado);*/
+    } 
   }
 }
-
+//
 boolean mqttClientConnect() {
-  Serial.print("Connecting to " + String(MQTT_BROKER));
+  Serial.print("Conectandose a " + String(MQTT_BROKER));
   if (mqttClient.connect(MQTT_CLIENT_ID)) {
-    Serial.println(" DONE!");
+    Serial.println(" HECHO!");
 
     mqttClient.subscribe(UPDATE_ACCEPTED_TOPIC);
-    Serial.println("Subscribed to " + String(UPDATE_TOPIC));
+    Serial.println("Suscrito a: " + String(UPDATE_TOPIC));
   } else {
-    Serial.println("Can't connect to " + String(MQTT_BROKER));
+    Serial.println("No puede conectarse a: " + String(MQTT_BROKER));
   }
   return mqttClient.connected();
 }
@@ -189,14 +199,14 @@ void setup() {
   for (int i = 0; i < AccionMotor; i++) {
     pinMode(Motor[i], OUTPUT);
   } 
-  Serial.print("Connecting to " + String(WIFI_SSID));
+  Serial.print("Conectando a: " + String(WIFI_SSID));
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     delay(200);
     Serial.print(".");
   }
-  Serial.println(" DONE!");
+  Serial.println(" REALIZADO!");
 
   wiFiClient.setCACert(AMAZON_ROOT_CA1);
   wiFiClient.setCertificate(CERTIFICATE);
@@ -216,22 +226,18 @@ char outputBufferLuz[128];
 
 void publishValueLuz(String valor) {
   outputDocLuz["accion"] = valor;
+  //outputDocLuz["luz"] = analogRead(SensorLuz);  // Asegúrate de que 'luz' tenga un valor
   serializeJson(outputDocLuz, outputBufferLuz);
   mqttClient.publish(PUBLISH_TOPIC, outputBufferLuz);
 }
 
-int luz; //variable para guardar datos del sensor de luz
-int aoc; //variable para medir si aun hay luz para cerrar la cortina
-String est;
-String Time;
-String dat;
 void loop() {
   unsigned long now = millis();
   if (!mqttClient.connected()) {
     if (now - previousConnectMillis >= 2000) {
       previousConnectMillis = now;
       if (mqttClientConnect()) previousConnectMillis = 0;
-      else delay(10);
+      else delay(1000);
     }
   } else { // Connected to the MQTT Broker
     mqttClient.loop();
@@ -239,10 +245,6 @@ void loop() {
 
     luz = analogRead(SensorLuz);
     aoc = analogRead(Tope);
-    //Serial.print("luz: ");
-    //Serial.print(luz);
-    //Serial.print(" -- ");
-    //Serial.print("abierto?: ");
     if(aoc > 1800)
     {
       est = "abierta";   
@@ -254,29 +256,31 @@ void loop() {
     
     if(luz > 800)
     {
-      Time = "dia";   
+      estadoTiempo = "dia";   
     }
-    if(luz < 800)
+    else if(luz < 800)
     {
-      Time = "noche";   
+      estadoTiempo = "noche";   
     }
-    if(Time == "dia" && est == "abierta"){
+    if(estadoTiempo == "dia" && est == "abierta"){
       dat = "detener";
       }
-    if(Time == "dia" && est == "cerrada"){
+    if(estadoTiempo == "dia" && est == "cerrada"){
       dat = "abrir";
       }
-    if(Time == "noche" && est == "cerrada"){
+    if(estadoTiempo == "noche" && est == "cerrada"){
       dat = "detener";
       }
-    if(Time == "noche" && est == "abierta"){
+    if(estadoTiempo == "noche" && est == "abierta"){
       dat = "cerrar";
       }
     if (now - previousPublishMillis >= 1000) {
       previousPublishMillis = now;
       publishValueLuz(dat);//rule con los topics
-      delay(500);
+      delay(1000);
       reportEstado(dat);//shadow
+
     }
   }
 }
+
